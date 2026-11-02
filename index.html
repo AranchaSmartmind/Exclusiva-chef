@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EXCLUSIVA CHEF</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f5f0ea;color:#30241e;font-family:Arial,sans-serif}
+header{background:#493126;color:white;padding:22px;text-align:center}
+h1{margin:0;font-size:27px}
+header p{margin:8px 0 0}
+main{max-width:650px;margin:auto;padding:15px}
+nav{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:18px}
+button{border:0;border-radius:10px;padding:13px;font-size:15px;cursor:pointer;background:#704c37;color:white}
+nav button{flex:1}
+section{background:white;border-radius:14px;padding:18px;margin-bottom:15px}
+h2{margin-top:0;font-size:21px}
+label{display:block;margin:12px 0 5px;font-weight:bold}
+input,select{width:100%;padding:13px;border:1px solid #c9b9ad;border-radius:9px;font-size:16px}
+.primary{background:#27704b;width:100%;margin-top:15px}
+.danger{background:#a73d36}
+.item{padding:12px 0;border-bottom:1px solid #eee}
+small{color:#685d56}
+.hidden{display:none}
+.result{background:#e9f5ec;padding:14px;border-radius:10px;margin-top:15px}
+.error{color:#b12525}
+</style>
+</head>
+<body>
+<header>
+<h1>🍽️ EXCLUSIVA CHEF</h1>
+<p>La Exclusiva · Ingredientes y escandallos</p>
+</header>
+<main>
+<nav>
+<button onclick="show('ingredientes')">📦 Ingredientes</button>
+<button onclick="show('recetas')">👩‍🍳 Recetas</button>
+<button onclick="show('calcular')">🧮 Escandallos</button>
+<button onclick="show('datos')">💾 Datos</button>
+</nav>
+
+<section id="ingredientes">
+<h2>📦 Registrar compra</h2>
+<form id="formIngrediente">
+<label>Ingrediente</label>
+<input id="nombre" placeholder="Ej. Lomo" required>
+<label>Cantidad comprada</label>
+<input id="cantidad" type="number" min="0.001" step="any" required>
+<label>Unidad</label>
+<select id="unidad">
+<option value="g">Gramos (g)</option>
+<option value="kg">Kilos (kg)</option>
+<option value="ml">Mililitros (ml)</option>
+<option value="l">Litros (l)</option>
+<option value="ud">Unidades</option>
+</select>
+<label>Precio total pagado (€)</label>
+<input id="precio" type="number" min="0" step="0.01" required>
+<button class="primary">Guardar compra</button>
+</form>
+<h2>Mis ingredientes</h2>
+<div id="listaIngredientes"></div>
+</section>
+
+<section id="recetas" class="hidden">
+<h2>👩‍🍳 Crear receta</h2>
+<form id="formReceta">
+<label>Nombre del pincho</label>
+<input id="nombreReceta" placeholder="Ej. Mini cachopo" required>
+<label>Porciones que salen de la receta</label>
+<input id="porciones" type="number" min="1" step="1" required>
+<label>Ingrediente</label>
+<select id="ingredienteReceta"></select>
+<label>Cantidad utilizada (g, ml o unidades)</label>
+<input id="cantidadReceta" type="number" min="0.001" step="any">
+<button type="button" onclick="agregarIngrediente()">+ Añadir ingrediente</button>
+<div id="componentes"></div>
+<button class="primary">Guardar receta</button>
+</form>
+<h2>Mis recetas</h2>
+<div id="listaRecetas"></div>
+</section>
+
+<section id="calcular" class="hidden">
+<h2>🧮 Escandallo del pincho</h2>
+<label>Selecciona una receta</label>
+<select id="seleccionReceta" onchange="calcular()"></select>
+<label>Pinchos que quieres preparar</label>
+<input id="objetivo" type="number" value="100" min="1" step="1" oninput="calcular()">
+<div id="resultado"></div>
+</section>
+
+<section id="datos" class="hidden">
+<h2>💾 Copia de seguridad</h2>
+<p>Guarda una copia regularmente. Los datos se almacenan en este navegador y no se sincronizan entre dispositivos.</p>
+<button onclick="exportar()">Descargar copia JSON</button>
+<label>Restaurar copia JSON</label>
+<input type="file" id="importar" accept=".json,application/json">
+<p><small>Restaurar reemplaza los datos actuales.</small></p>
+</section>
+</main>
+
+<script>
+const KEY="exclusivaChefV1";
+let db;
+try{
+db=JSON.parse(localStorage.getItem(KEY))||{ingredientes:[],recetas:[]};
+if(!Array.isArray(db.ingredientes)||!Array.isArray(db.recetas))throw Error();
+}catch(e){db={ingredientes:[],recetas:[]};}
+let componentes=[];
+const $=id=>document.getElementById(id);
+const euros=n=>Number(n).toLocaleString("es-ES",{style:"currency",currency:"EUR"});
+const limpio=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function guardar(){
+try{localStorage.setItem(KEY,JSON.stringify(db));return true;}
+catch(e){alert("No se pudo guardar. Exporta una copia y revisa el espacio del navegador.");return false;}
+}
+function show(id){
+["ingredientes","recetas","calcular","datos"].forEach(x=>$(x).classList.toggle("hidden",x!==id));
+actualizar();
+}
+function factor(u){return u==="kg"||u==="l"?1000:1;}
+function base(u){return u==="kg"?"g":u==="l"?"ml":u;}
+function actualizar(){
+$("listaIngredientes").innerHTML=db.ingredientes.length?db.ingredientes.map((i,n)=>
+`<div class="item"><b>${limpio(i.nombre)}</b><br>
+${i.cantidad} ${i.unidad} · ${euros(i.precio)}
+<br><small>${euros(i.precio/(i.cantidad*factor(i.unidad)))} por ${base(i.unidad)}</small>
+<br><button class="danger" onclick="borrarIngrediente(${n})">Eliminar</button></div>`).join(""):"Todavía no hay ingredientes.";
+$("ingredienteReceta").innerHTML=db.ingredientes.map((i,n)=>
+`<option value="${n}">${limpio(i.nombre)} (${base(i.unidad)})</option>`).join("");
+$("seleccionReceta").innerHTML=db.recetas.map((r,n)=>
+`<option value="${n}">${limpio(r.nombre)}</option>`).join("");
+$("listaRecetas").innerHTML=db.recetas.length?db.recetas.map((r,n)=>
+`<div class="item"><b>${limpio(r.nombre)}</b><br>${r.porciones} porciones
+<br><button class="danger" onclick="borrarReceta(${n})">Eliminar</button></div>`).join(""):"Todavía no hay recetas.";
+mostrarComponentes();
+calcular();
+}
+$("formIngrediente").addEventListener("submit",e=>{
+e.preventDefault();
+let nombre=$("nombre").value.trim();
+let cantidad=Number($("cantidad").value);
+let precio=Number($("precio").value);
+let unidad=$("unidad").value;
+if(!nombre||!(cantidad>0)||precio<0||!Number.isFinite(precio))return alert("Revisa los datos.");
+if(db.ingredientes.some(i=>i.nombre.toLowerCase()===nombre.toLowerCase()))
+return alert("Ese ingrediente ya existe. Para evitar duplicados, usa un nombre diferente o elimina el anterior.");
+db.ingredientes.push({nombre,cantidad,precio,unidad});
+if(guardar()){$("formIngrediente").reset();actualizar();}
+});
+function borrarIngrediente(n){
+let i=db.ingredientes[n];
+if(db.recetas.some(r=>r.items.some(x=>x.nombre===i.nombre)))
+return alert("Este ingrediente aparece en recetas. Elimina primero esas recetas.");
+if(confirm("¿Eliminar "+i.nombre+"?")){db.ingredientes.splice(n,1);guardar();actualizar();}
+}
+function agregarIngrediente(){
+let n=Number($("ingredienteReceta").value);
+let i=db.ingredientes[n];
+let cantidad=Number($("cantidadReceta").value);
+if(!i||!(cantidad>0))return alert("Selecciona un ingrediente y una cantidad válida.");
+if(componentes.some(x=>x.nombre===i.nombre))return alert("Ya añadiste este ingrediente.");
+componentes.push({nombre:i.nombre,cantidad});
+$("cantidadReceta").value="";
+mostrarComponentes();
+}
+function mostrarComponentes(){
+$("componentes").innerHTML=componentes.map((x,n)=>
+`<div class="item">${limpio(x.nombre)}: ${x.cantidad}
+<button type="button" class="danger" onclick="quitar(${n})">Quitar</button></div>`).join("");
+}
+function quitar(n){componentes.splice(n,1);mostrarComponentes();}
+$("formReceta").addEventListener("submit",e=>{
+e.preventDefault();
+let nombre=$("nombreReceta").value.trim();
+let porciones=Number($("porciones").value);
+if(!nombre||!Number.isInteger(porciones)||porciones<1||!componentes.length)
+return alert("Introduce nombre, porciones e ingredientes.");
+db.recetas.push({nombre,porciones,items:componentes.map(x=>({...x}))});
+if(guardar()){
+componentes=[];
+$("formReceta").reset();
+actualizar();
+}
+});
+function borrarReceta(n){
+if(confirm("¿Eliminar esta receta?")){db.recetas.splice(n,1);guardar();actualizar();}
+}
+function calcular(){
+let r=db.recetas[Number($("seleccionReceta").value)];
+if(!r){$("resultado").innerHTML="<p>Crea una receta para calcular su coste.</p>";return;}
+let total=0,limite=Infinity,detalle=[],valido=true;
+for(let x of r.items){
+let i=db.ingredientes.find(a=>a.nombre===x.nombre);
+if(!i){valido=false;break;}
+let stock=i.cantidad*factor(i.unidad);
+let coste=x.cantidad*i.precio/stock;
+total+=coste;
+limite=Math.min(limite,Math.floor(stock/x.cantidad));
+detalle.push(`${limpio(i.nombre)}: ${euros(coste)}`);
+}
+if(!valido){$("resultado").innerHTML="<p class='error'>Falta un ingrediente.</p>";return;}
+let objetivo=Number($("objetivo").value);
+if(!Number.isInteger(objetivo)||objetivo<1||objetivo>100000){
+$("resultado").innerHTML="<p class='error'>Introduce entre 1 y 100.000 pinchos.</p>";return;
+}
+let costePincho=total/r.porciones;
+let max=limite*r.porciones;
+$("resultado").innerHTML=`<div class="result">
+<b>Coste de la receta:</b> ${euros(total)}<br>
+<b>Coste por pincho:</b> ${euros(costePincho)}<br>
+<b>Pinchos posibles con el stock:</b> ${max}<br>
+<b>Coste estimado para ${objetivo} pinchos:</b> ${euros(costePincho*objetivo)}<br>
+<b>¿Tienes ingredientes suficientes?</b> ${max>=objetivo?"Sí":"No"}
+<hr><small>${detalle.join("<br>")}</small>
+</div><p><small>Coste de ingredientes registrados. No incluye aceite, energía, mano de obra ni mermas no introducidas.</small></p>`;
+}
+function exportar(){
+let blob=new Blob([JSON.stringify(db,null,2)],{type:"application/json"});
+let url=URL.createObjectURL(blob);
+let a=document.createElement("a");
+a.href=url;a.download="exclusiva-chef-copia.json";a.click();
+setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+$("importar").addEventListener("change",async e=>{
+let f=e.target.files[0];if(!f)return;
+try{
+let d=JSON.parse(await f.text());
+if(!Array.isArray(d.ingredientes)||!Array.isArray(d.recetas))throw Error();
+if(!confirm("¿Reemplazar los datos actuales con esta copia?"))return;
+db=d;componentes=[];guardar();actualizar();alert("Copia restaurada.");
+}catch(err){alert("El archivo no es una copia válida.");}
+e.target.value="";
+});
+actualizar();
+</script>
+</body>
+</html>
